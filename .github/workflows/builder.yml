@@ -1,0 +1,72 @@
+name: ESP32 Security Demo Builder
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Cache Arduino CLI
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.arduino15
+          ~/Arduino/libraries
+        key: ${{ runner.os }}-arduino-${{ hashFiles('**/main.cpp') }}
+        restore-keys: |
+          ${{ runner.os }}-arduino-
+
+    - name: Install Arduino CLI
+      run: |
+        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Install ESP32 platform
+      run: |
+        arduino-cli config init
+        arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+        arduino-cli core update-index
+        arduino-cli core install esp32:esp32@2.0.14
+
+    - name: Install required libraries
+      run: |
+        arduino-cli lib install "IRremoteESP8266"
+        arduino-cli lib install "WebServer"
+
+    - name: Create sketch directory structure
+      run: |
+        mkdir -p esp32_security_demo
+        cp main.cpp esp32_security_demo/esp32_security_demo.ino
+
+    - name: Compile firmware
+      run: |
+        arduino-cli compile --fqbn esp32:esp32:esp32 esp32_security_demo/
+
+    - name: Build artifacts info
+      run: |
+        ls -lh esp32_security_demo/build/esp32.esp32.esp32/
+        echo "✓ Build successful"
+        echo "Firmware size:"
+        du -h esp32_security_demo/build/esp32.esp32.esp32/esp32_security_demo.ino.bin
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: esp32-firmware
+        path: esp32_security_demo/build/esp32.esp32.esp32/*.bin
+        retention-days: 30
+
+    - name: Build summary
+      run: |
+        echo "### Build Summary ✓" >> $GITHUB_STEP_SUMMARY
+        echo "- **Platform**: ESP32" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Status**: Success" >> $GITHUB_STEP_SUMMARY
+        echo "- **Firmware Files**: $(ls esp32_security_demo/build/esp32.esp32.esp32/*.bin | wc -l)" >> $GITHUB_STEP_SUMMARY
